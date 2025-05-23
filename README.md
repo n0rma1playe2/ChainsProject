@@ -1,4 +1,4 @@
-# ChainsProject
+# ChainsProject(还未完成)
 
 一个基于 Jetpack Compose 开发的 Android 电商应用。
 
