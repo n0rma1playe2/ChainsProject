@@ -1,7 +1,6 @@
 package com.example.web3project.ui.scan
 
 import android.Manifest
-import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -13,52 +12,32 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.PermissionStatus
-import com.google.accompanist.permissions.rememberPermissionState
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanOptions
+import com.example.web3project.util.PermissionManager
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ScanScreen(
-    navController: NavController,
-    viewModel: ScanViewModel = hiltViewModel()
-) {
+fun ScanScreen(navController: NavController) {
     val context = LocalContext.current
-    val scanState by viewModel.scanState.collectAsState()
-    
-    // 相机权限请求
-    val cameraPermissionState = rememberPermissionState(
-        permission = Manifest.permission.CAMERA
-    )
-    
-    // 扫描结果处理
-    val barcodeLauncher = rememberLauncherForActivityResult(
-        contract = ScanContract()
-    ) { result ->
-        result.contents?.let { contents ->
-            viewModel.onScanResult(contents)
+    var hasCameraPermission by remember {
+        mutableStateOf(PermissionManager.hasCameraPermission(context))
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasCameraPermission = isGranted
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasCameraPermission) {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
-    
-    // 启动扫描
-    fun startScan() {
-        val options = ScanOptions().apply {
-            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-            setPrompt("请将二维码对准扫描框")
-            setBeepEnabled(true)
-            setBarcodeImageEnabled(true)
-        }
-        barcodeLauncher.launch(options)
-    }
-    
+
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text("扫描二维码") },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
@@ -74,69 +53,24 @@ fun ScanScreen(
                 .padding(paddingValues),
             contentAlignment = Alignment.Center
         ) {
-            when {
-                scanState.isLoading -> {
-                    CircularProgressIndicator()
-                }
-                scanState.error != null -> {
-                    val errorMessage = scanState.error ?: "未知错误"
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = errorMessage,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = {
-                                viewModel.resetState()
-                            }
-                        ) {
-                            Text("重试")
-                        }
-                    }
-                }
-                scanState.scanResult != null -> {
-                    val result = scanState.scanResult ?: ""
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text("扫描成功！")
-                        Text("批次ID: $result")
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = {
-                                navController.navigate(
-                                    "traceability/$result"
-                                )
-                            }
-                        ) {
-                            Text("查看溯源信息")
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(
-                            onClick = {
-                                viewModel.resetState()
-                            }
-                        ) {
-                            Text("继续扫描")
-                        }
-                    }
-                }
-                else -> {
+            if (hasCameraPermission) {
+                CameraPreview()
+            } else {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "需要相机权限才能使用扫码功能",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = {
-                            if (cameraPermissionState.status == PermissionStatus.Granted) {
-                                startScan()
-                            } else {
-                                cameraPermissionState.launchPermissionRequest()
-                            }
+                            permissionLauncher.launch(Manifest.permission.CAMERA)
                         }
                     ) {
-                        Text("开始扫描")
+                        Text("授予权限")
                     }
                 }
             }

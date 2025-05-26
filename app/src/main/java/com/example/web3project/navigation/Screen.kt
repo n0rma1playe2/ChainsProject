@@ -16,19 +16,19 @@ class Screen(
         val Home = Screen(
             route = "home",
             title = "首页",
-            icon = Icons.Default.Home
+            icon = Icons.Filled.Home
         )
         
         val Scan = Screen(
             route = "scan",
             title = "扫码",
-            icon = Icons.Default.Camera
+            icon = Icons.Filled.Camera
         )
         
         val Settings = Screen(
             route = "settings",
             title = "设置",
-            icon = Icons.Default.Settings
+            icon = Icons.Filled.Settings
         )
         
         val screens = listOf(Home, Scan, Settings)
