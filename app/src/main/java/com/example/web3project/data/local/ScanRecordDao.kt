@@ -1,7 +1,6 @@
-package com.example.web3project.data.dao
+package com.example.web3project.data.local
 
 import androidx.room.*
-import com.example.web3project.data.model.ScanRecord
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -10,17 +9,20 @@ interface ScanRecordDao {
     fun getAllRecords(): Flow<List<ScanRecord>>
 
     @Query("SELECT * FROM scan_records WHERE id = :id")
-    suspend fun getRecordById(id: Long): ScanRecord?
+    fun getRecordById(id: Long): Flow<ScanRecord?>
 
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecord(record: ScanRecord): Long
-
-    @Update
-    suspend fun updateRecord(record: ScanRecord)
 
     @Delete
     suspend fun deleteRecord(record: ScanRecord)
 
     @Query("DELETE FROM scan_records")
     suspend fun deleteAllRecords()
+
+    @Update
+    suspend fun updateRecord(record: ScanRecord)
+
+    @Query("SELECT * FROM scan_records WHERE content LIKE '%' || :query || '%' ORDER BY timestamp DESC")
+    fun searchRecords(query: String): Flow<List<ScanRecord>>
 } 

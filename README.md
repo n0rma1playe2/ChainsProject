@@ -1,61 +1,99 @@
-# ChainsProject
+# Web3 扫描器应用
 
-基于 Jetpack Compose 的 Android 应用项目
+## 项目概述
+本项目是一个基于 Jetpack Compose 的 Android 应用，用于扫描二维码、条形码等，并支持历史记录、设置等功能。
 
-## 项目说明
+## 技术栈
+- Kotlin
+- Jetpack Compose
+- Hilt
+- Room
+- CameraX
+- ML Kit
 
-这是一个使用现代 Android 开发技术栈构建的应用项目。
+## 功能模块
+1. **扫码功能**
+   - 支持多种码格式（QR码、Aztec码、Codabar码、Code 39码、Code 93码、Code 128码、Data Matrix码、EAN-8码、EAN-13码、ITF码、UPC-A码、UPC-E码、PDF417码）
+   - 扫码成功时震动反馈
+   - 自动保存扫描记录
 
-### 技术栈
+2. **历史记录**
+   - 查看所有扫描记录
+   - 支持搜索、删除、详情查看、复制、分享
+   - 详情页支持参数传递
 
-- Kotlin 作为主要开发语言
-- Jetpack Compose 用于 UI 开发
-- MVVM 架构模式
-- Material Design 3 设计规范
-- Room 数据库
-- Hilt 依赖注入
-- Retrofit 网络请求
-- Kotlin Coroutines & Flow
+3. **设置**
+   - 支持自定义设置
 
-### 项目结构
+## 开发计划
+按重要度排序，下一步开发计划如下：
+1. **历史记录优化**
+   - 优化历史记录列表性能
+   - 支持批量删除
+   - 支持按时间排序
 
+2. **扫码功能增强**
+   - 支持手动输入
+   - 支持闪光灯控制
+   - 支持自定义扫码区域
+
+3. **设置功能完善**
+   - 支持主题切换
+   - 支持语言切换
+   - 支持通知设置
+
+4. **性能优化**
+   - 优化应用启动速度
+   - 优化内存占用
+   - 优化电池消耗
+
+5. **自动化**
+   - 自动打包 APK
+   - 自动推送到 GitHub
+   - 自动发布到应用商店
+
+## 项目结构
 ```
 app/
 ├── src/
 │   ├── main/
-│   │   ├── java/com/example/chainsproject/
-│   │   │   ├── data/           # 数据层
-│   │   │   ├── di/            # 依赖注入
-│   │   │   ├── domain/        # 领域层
-│   │   │   ├── ui/            # UI 层
-│   │   │   └── utils/         # 工具类
-│   │   └── res/               # 资源文件
-│   └── test/                  # 测试代码
-└── build.gradle.kts          # 项目构建配置
+│   │   ├── java/
+│   │   │   └── com/
+│   │   │       └── example/
+│   │   │           └── web3project/
+│   │   │               ├── data/
+│   │   │               │   ├── dao/
+│   │   │               │   ├── model/
+│   │   │               │   └── repository/
+│   │   │               ├── ui/
+│   │   │               │   ├── history/
+│   │   │               │   ├── scan/
+│   │   │               │   └── settings/
+│   │   │               └── Web3Application.kt
+│   │   └── res/
+│   └── test/
+└── build.gradle
 ```
 
-### 开发环境要求
+## 开发进度
+- ✅ 项目初始化
+- ✅ 扫码功能
+- ✅ 历史记录
+- ✅ 设置
+- ⏳ 历史记录优化
+- ⏳ 扫码功能增强
+- ⏳ 设置功能完善
+- ⏳ 性能优化
+- ⏳ 自动化
 
-- Android Studio Hedgehog | 2023.1.1 或更高版本
-- JDK 17 或更高版本
-- Android SDK 34 或更高版本
-- Gradle 8.2 或更高版本
+## 下一步
+根据重要度，下一步将优先开发历史记录优化功能，包括：
+- 优化历史记录列表性能
+- 支持批量删除
+- 支持按时间排序
 
-### 构建和运行
+## 贡献
+欢迎提交 Issue 和 Pull Request。
 
-1. 克隆项目
-2. 在 Android Studio 中打开项目
-3. 等待 Gradle 同步完成
-4. 点击运行按钮或使用快捷键 Shift + F10
-
-### 贡献指南
-
-1. Fork 项目
-2. 创建特性分支
-3. 提交更改
-4. 推送到分支
-5. 创建 Pull Request
-
-### 许可证
-
-MIT License 
+## 许可证
+MIT 

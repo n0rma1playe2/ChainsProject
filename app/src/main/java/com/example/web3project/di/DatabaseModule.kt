@@ -2,8 +2,8 @@ package com.example.web3project.di
 
 import android.content.Context
 import androidx.room.Room
-import com.example.web3project.data.database.AppDatabase
-import com.example.web3project.data.dao.ScanRecordDao
+import com.example.web3project.data.local.AppDatabase
+import com.example.web3project.data.local.ScanRecordDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -23,12 +23,19 @@ object DatabaseModule {
         return Room.databaseBuilder(
             context,
             AppDatabase::class.java,
-            "web3_database"
+            "web3_scanner.db"
         ).build()
     }
 
     @Provides
+    @Singleton
     fun provideScanRecordDao(database: AppDatabase): ScanRecordDao {
         return database.scanRecordDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideSharedPreferences(@ApplicationContext context: Context): android.content.SharedPreferences {
+        return context.getSharedPreferences("settings", Context.MODE_PRIVATE)
     }
 } 

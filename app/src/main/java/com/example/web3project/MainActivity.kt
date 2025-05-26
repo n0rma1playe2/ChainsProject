@@ -1,8 +1,11 @@
 package com.example.web3project
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -10,103 +13,85 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.example.web3project.navigation.Screen
+import androidx.core.content.ContextCompat
+import com.example.web3project.ui.history.HistoryScreen
+import com.example.web3project.ui.history.RecordDetailScreen
 import com.example.web3project.ui.scan.ScanScreen
+import com.example.web3project.ui.settings.SettingsScreen
 import com.example.web3project.ui.theme.Web3ProjectTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            Web3ProjectTheme {
-                MainScreen()
-            }
+    private val requiredPermissions = arrayOf(
+        Manifest.permission.CAMERA,
+        Manifest.permission.VIBRATE
+    )
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.entries.all { it.value }
+        if (allGranted) {
+            // 权限都已授予，可以开始扫描
         }
     }
-}
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun MainScreen() {
-    val navController = rememberNavController()
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                Screen.bottomNavItems.forEach { screen ->
-                    NavigationBarItem(
-                        icon = { Icon(screen.icon, contentDescription = screen.title) },
-                        label = { Text(screen.title) },
-                        selected = currentRoute == screen.route,
-                        onClick = {
-                            navController.navigate(screen.route) {
-                                popUpTo(navController.graph.startDestinationId)
-                                launchSingleTop = true
-                            }
+        // 检查并请求权限
+        if (!hasRequiredPermissions()) {
+            permissionLauncher.launch(requiredPermissions)
+        }
+
+        setContent {
+            Web3ProjectTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    val navController = rememberNavController()
+
+                    NavHost(
+                        navController = navController,
+                        startDestination = "scan"
+                    ) {
+                        composable("scan") {
+                            ScanScreen(
+                                onNavigateToHistory = { navController.navigate("history") },
+                                onNavigateToSettings = { navController.navigate("settings") }
+                            )
                         }
-                    )
+                        composable("history") {
+                            HistoryScreen(
+                                onRecordClick = { recordId ->
+                                    navController.navigate("record_detail/$recordId")
+                                }
+                            )
+                        }
+                        composable("record_detail/{recordId}") { backStackEntry ->
+                            val recordId = backStackEntry.arguments?.getString("recordId")?.toLongOrNull() ?: 0L
+                            RecordDetailScreen(
+                                recordId = recordId,
+                                onNavigateBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable("settings") {
+                            SettingsScreen(
+                                onNavigateBack = { navController.popBackStack() }
+                            )
+                        }
+                    }
                 }
             }
         }
-    ) { paddingValues ->
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Home.route,
-            modifier = Modifier.padding(paddingValues)
-        ) {
-            composable(Screen.Home.route) {
-                HomeScreen()
-            }
-            composable(Screen.Scan.route) {
-                ScanScreen()
-            }
-            composable(Screen.Settings.route) {
-                SettingsScreen()
-            }
+    }
+
+    private fun hasRequiredPermissions(): Boolean {
+        return requiredPermissions.all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
         }
-    }
-}
-
-@Composable
-fun HomeScreen() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "欢迎使用 Web3 扫描器",
-            style = MaterialTheme.typography.headlineMedium
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "点击底部导航栏的扫码按钮开始扫描",
-            style = MaterialTheme.typography.bodyLarge
-        )
-    }
-}
-
-@Composable
-fun SettingsScreen() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "设置",
-            style = MaterialTheme.typography.headlineMedium
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "设置页面开发中...",
-            style = MaterialTheme.typography.bodyLarge
-        )
     }
 }
