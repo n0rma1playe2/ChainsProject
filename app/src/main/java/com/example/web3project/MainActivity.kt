@@ -14,60 +14,60 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.web3project.navigation.Screen
 import com.example.web3project.ui.scan.ScanScreen
-import com.example.web3project.ui.theme.Web3projectTheme
+import com.example.web3project.ui.theme.Web3ProjectTheme
 import dagger.hilt.android.AndroidEntryPoint
 
-@OptIn(ExperimentalMaterial3Api::class)
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            Web3projectTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    val navController = rememberNavController()
-                    val navBackStackEntry by navController.currentBackStackEntryAsState()
-                    val currentRoute = navBackStackEntry?.destination?.route
-                    
-                    Scaffold(
-                        bottomBar = {
-                            NavigationBar {
-                                Screen.screens.forEach { screen ->
-                                    NavigationBarItem(
-                                        icon = { Icon(screen.icon, contentDescription = screen.title) },
-                                        label = { Text(screen.title) },
-                                        selected = currentRoute == screen.route,
-                                        onClick = {
-                                            navController.navigate(screen.route) {
-                                                popUpTo(navController.graph.startDestinationId)
-                                                launchSingleTop = true
-                                            }
-                                        }
-                                    )
-                                }
+            Web3ProjectTheme {
+                MainScreen()
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MainScreen() {
+    val navController = rememberNavController()
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                Screen.bottomNavItems.forEach { screen ->
+                    NavigationBarItem(
+                        icon = { Icon(screen.icon, contentDescription = screen.title) },
+                        label = { Text(screen.title) },
+                        selected = currentRoute == screen.route,
+                        onClick = {
+                            navController.navigate(screen.route) {
+                                popUpTo(navController.graph.startDestinationId)
+                                launchSingleTop = true
                             }
                         }
-                    ) { paddingValues ->
-                    NavHost(
-                        navController = navController,
-                            startDestination = Screen.Home.route,
-                            modifier = Modifier.padding(paddingValues)
-                    ) {
-                        composable(Screen.Home.route) {
-                                HomeScreen()
-                        }
-                        composable(Screen.Scan.route) {
-                            ScanScreen(navController = navController)
-                        }
-                        composable(Screen.Settings.route) {
-                                SettingsScreen()
-                            }
-                        }
-                    }
+                    )
                 }
+            }
+        }
+    ) { paddingValues ->
+        NavHost(
+            navController = navController,
+            startDestination = Screen.Home.route,
+            modifier = Modifier.padding(paddingValues)
+        ) {
+            composable(Screen.Home.route) {
+                HomeScreen()
+            }
+            composable(Screen.Scan.route) {
+                ScanScreen()
+            }
+            composable(Screen.Settings.route) {
+                SettingsScreen()
             }
         }
     }

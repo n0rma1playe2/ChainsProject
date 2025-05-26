@@ -2,35 +2,34 @@ package com.example.web3project.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Camera
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
 
-// 将 sealed 类改为普通类
-class Screen(
+sealed class Screen(
     val route: String,
     val title: String,
     val icon: ImageVector
 ) {
+    object Home : Screen(
+        route = "home",
+        title = "首页",
+        icon = Icons.Default.Home
+    )
+    
+    object Scan : Screen(
+        route = "scan",
+        title = "扫描",
+        icon = Icons.Default.QrCodeScanner
+    )
+    
+    object Settings : Screen(
+        route = "settings",
+        title = "设置",
+        icon = Icons.Default.Settings
+    )
+
     companion object {
-        val Home = Screen(
-            route = "home",
-            title = "首页",
-            icon = Icons.Filled.Home
-        )
-        
-        val Scan = Screen(
-            route = "scan",
-            title = "扫码",
-            icon = Icons.Filled.Camera
-        )
-        
-        val Settings = Screen(
-            route = "settings",
-            title = "设置",
-            icon = Icons.Filled.Settings
-        )
-        
-        val screens = listOf(Home, Scan, Settings)
+        val bottomNavItems = listOf(Home, Scan, Settings)
     }
 } 
