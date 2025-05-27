@@ -6,7 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.web3project.data.local.ScanRecordDao
+import com.example.web3project.data.repository.ScanRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,7 +16,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val scanRecordDao: ScanRecordDao,
+    private val scanRepository: ScanRepository,
     private val sharedPreferences: SharedPreferences
 ) : ViewModel() {
     private val _isDarkTheme = MutableStateFlow(sharedPreferences.getBoolean("isDarkTheme", false))
@@ -60,7 +60,7 @@ class SettingsViewModel @Inject constructor(
 
     fun clearHistory() {
         viewModelScope.launch {
-            scanRecordDao.deleteAllRecords()
+            scanRepository.deleteAllRecords()
         }
     }
 

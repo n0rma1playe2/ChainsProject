@@ -23,12 +23,11 @@ object DatabaseModule {
         return Room.databaseBuilder(
             context,
             AppDatabase::class.java,
-            "web3_scanner.db"
+            "app_database"
         ).build()
     }
 
     @Provides
-    @Singleton
     fun provideScanRecordDao(database: AppDatabase): ScanRecordDao {
         return database.scanRecordDao()
     }

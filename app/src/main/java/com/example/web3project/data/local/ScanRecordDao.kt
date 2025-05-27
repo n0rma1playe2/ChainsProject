@@ -12,7 +12,10 @@ interface ScanRecordDao {
     fun getRecordById(id: Long): Flow<ScanRecord?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertRecord(record: ScanRecord): Long
+    suspend fun insertRecord(record: ScanRecord)
+
+    @Update
+    suspend fun updateRecord(record: ScanRecord)
 
     @Delete
     suspend fun deleteRecord(record: ScanRecord)
@@ -20,8 +23,8 @@ interface ScanRecordDao {
     @Query("DELETE FROM scan_records")
     suspend fun deleteAllRecords()
 
-    @Update
-    suspend fun updateRecord(record: ScanRecord)
+    @Query("SELECT * FROM scan_records WHERE isFavorite = 1 ORDER BY timestamp DESC")
+    fun getFavoriteRecords(): Flow<List<ScanRecord>>
 
     @Query("SELECT * FROM scan_records WHERE content LIKE '%' || :query || '%' ORDER BY timestamp DESC")
     fun searchRecords(query: String): Flow<List<ScanRecord>>

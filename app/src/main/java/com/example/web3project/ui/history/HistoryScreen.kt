@@ -6,12 +6,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.web3project.data.local.ScanRecord
@@ -21,111 +22,86 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
-    onRecordClick: (Long) -> Unit,
+    onRecordClick: (ScanRecord) -> Unit,
     viewModel: HistoryViewModel = hiltViewModel()
 ) {
-    val records by viewModel.records.collectAsState()
-    val selectedRecords by viewModel.selectedRecords.collectAsState()
-    var showDeleteDialog by remember { mutableStateOf(false) }
-    var showDeleteAllDialog by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
+    val records by viewModel.records.collectAsState(initial = emptyList())
+    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("历史记录") },
+                title = { Text("扫描历史") },
                 actions = {
-                    if (selectedRecords.isNotEmpty()) {
-                        IconButton(onClick = { showDeleteDialog = true }) {
-                            Icon(Icons.Default.Delete, contentDescription = "删除选中")
+                    if (records.isNotEmpty()) {
+                        IconButton(onClick = { viewModel.deleteAllRecords() }) {
+                            Icon(Icons.Filled.Menu, contentDescription = "清空历史")
                         }
                     }
-                    IconButton(onClick = { showDeleteAllDialog = true }) {
-                        Icon(Icons.Default.Delete, contentDescription = "清空记录")
-                    }
                 }
             )
         }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { 
-                    searchQuery = it
-                    viewModel.searchRecords(it)
-                },
+    ) { padding ->
+        if (records.isEmpty()) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                placeholder = { Text("搜索记录") },
-                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = "搜索") }
-            )
-
+                    .fillMaxSize()
+                    .padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("暂无扫描记录")
+            }
+        } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
             ) {
                 items(records) { record ->
-                    HistoryItem(
-                        record = record,
-                        isSelected = record.id in selectedRecords,
-                        onItemClick = { onRecordClick(record.id) },
-                        onItemLongClick = { viewModel.toggleRecordSelection(record.id) }
-                    )
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        onClick = { onRecordClick(record) }
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = record.content,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(
+                                    onClick = { viewModel.toggleFavorite(record) }
+                                ) {
+                                    Icon(
+                                        imageVector = if (record.isFavorite) Icons.Filled.Menu else Icons.Filled.Menu,
+                                        contentDescription = if (record.isFavorite) "取消收藏" else "收藏",
+                                        tint = if (record.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "${record.type} · ${dateFormat.format(record.timestamp)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
         }
-    }
-
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("删除选中记录") },
-            text = { Text("确定要删除选中的 ${selectedRecords.size} 条记录吗？") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.deleteSelectedRecords()
-                        showDeleteDialog = false
-                    }
-                ) {
-                    Text("确定")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("取消")
-                }
-            }
-        )
-    }
-
-    if (showDeleteAllDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteAllDialog = false },
-            title = { Text("清空所有记录") },
-            text = { Text("确定要清空所有记录吗？此操作不可恢复。") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.deleteAllRecords()
-                        showDeleteAllDialog = false
-                    }
-                ) {
-                    Text("确定")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteAllDialog = false }) {
-                    Text("取消")
-                }
-            }
-        )
     }
 }
 
@@ -164,7 +140,7 @@ fun HistoryItem(
             }
             if (isSelected) {
                 Icon(
-                    Icons.Default.Delete,
+                    Icons.Filled.Menu,
                     contentDescription = "已选中",
                     tint = MaterialTheme.colorScheme.primary
                 )

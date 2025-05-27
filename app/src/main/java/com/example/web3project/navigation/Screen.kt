@@ -1,16 +1,26 @@
 package com.example.web3project.navigation
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.vector.ImageVector
 
 // 页面路由和底部导航项定义
-class ScreenItem(val title: String, val route: String, val icon: ImageVector)
+sealed class Screen(val route: String) {
+    object Scan : Screen("scan")
+    object History : Screen("history")
+    object RecordDetail : Screen("record_detail")
+    object Settings : Screen("settings")
+}
 
-object Screen {
-    val Home = ScreenItem("首页", "home", Icons.Filled.Home)
-    val Settings = ScreenItem("设置", "settings", Icons.Filled.Settings)
-    val bottomNavItems = listOf(Home, Settings)
-    // 其他页面如有需要可在此添加
-} 
+// 底部导航项
+val bottomNavItems = listOf(
+    ScreenItem("扫描", Screen.Scan.route, Icons.Filled.Menu),
+    ScreenItem("历史", Screen.History.route, Icons.Filled.Menu),
+    ScreenItem("设置", Screen.Settings.route, Icons.Filled.Menu)
+)
+
+data class ScreenItem(
+    val title: String,
+    val route: String,
+    val icon: ImageVector
+) 

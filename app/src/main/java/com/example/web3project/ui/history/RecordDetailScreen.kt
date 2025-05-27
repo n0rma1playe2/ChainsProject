@@ -3,9 +3,7 @@ package com.example.web3project.ui.history
 import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,11 +20,13 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecordDetailScreen(
-    recordId: Long,
-    onNavigateBack: () -> Unit,
-    viewModel: HistoryViewModel = hiltViewModel()
+    record: ScanRecord,
+    onBackClick: () -> Unit,
+    onShareClick: (String) -> Unit,
+    onCopyClick: (String) -> Unit,
+    onDeleteClick: (ScanRecord) -> Unit,
+    onFavoriteClick: (ScanRecord) -> Unit
 ) {
-    val record by viewModel.getRecordById(recordId).collectAsState(initial = null)
     val context = LocalContext.current
     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
     val clipboardManager = LocalClipboardManager.current
@@ -44,66 +44,98 @@ fun RecordDetailScreen(
             TopAppBar(
                 title = { Text("记录详情") },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.Filled.Menu, contentDescription = "返回")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { onShareClick(record.content) }) {
+                        Icon(Icons.Filled.Menu, contentDescription = "分享")
+                    }
+                    IconButton(onClick = { onCopyClick(record.content) }) {
+                        Icon(Icons.Filled.Menu, contentDescription = "复制")
+                    }
+                    IconButton(onClick = { onFavoriteClick(record) }) {
+                        Icon(
+                            imageVector = if (record.isFavorite) Icons.Filled.Menu else Icons.Filled.Menu,
+                            contentDescription = if (record.isFavorite) "取消收藏" else "收藏",
+                            tint = if (record.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    IconButton(onClick = { onDeleteClick(record) }) {
+                        Icon(Icons.Filled.Menu, contentDescription = "删除")
                     }
                 }
             )
         }
-    ) { paddingValues ->
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp)
+                .padding(padding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            record?.let { r ->
-                Text(
-                    text = r.content,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "${r.type} · ${dateFormat.format(r.timestamp)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
                 ) {
-                    Button(
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(r.content))
-                            showCopiedToast = true
-                        }
-                    ) {
-                        Icon(Icons.Filled.ContentCopy, contentDescription = "复制")
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("复制")
-                    }
-                    Button(
-                        onClick = {
-                            val shareIntent = android.content.Intent().apply {
-                                action = android.content.Intent.ACTION_SEND
-                                type = "text/plain"
-                                putExtra(android.content.Intent.EXTRA_TEXT, r.content)
-                            }
-                            context.startActivity(android.content.Intent.createChooser(shareIntent, "分享"))
-                        }
-                    ) {
-                        Icon(Icons.Filled.Share, contentDescription = "分享")
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("分享")
-                    }
+                    Text(
+                        text = "内容",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = record.content,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
                 }
-            } ?: run {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = androidx.compose.ui.Alignment.Center
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
                 ) {
-                    Text("记录不存在")
+                    Text(
+                        text = "类型",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = record.type,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "时间",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = dateFormat.format(record.timestamp),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
                 }
             }
         }
