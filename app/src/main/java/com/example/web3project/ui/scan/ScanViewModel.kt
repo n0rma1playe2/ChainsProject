@@ -8,8 +8,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.web3project.data.local.ScanRecord
-import com.example.web3project.data.local.ScanRecordDao
+import com.example.web3project.data.entity.ScanRecord
+import com.example.web3project.data.repository.ScanRecordRepository
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -27,7 +27,7 @@ import javax.inject.Inject
 @HiltViewModel
 class ScanViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val scanRecordDao: ScanRecordDao
+    private val repository: ScanRecordRepository
 ) : ViewModel() {
 
     private val _scanState = MutableStateFlow<ScanState>(ScanState.Initial)
@@ -94,6 +94,20 @@ class ScanViewModel @Inject constructor(
         if (mediaImage != null) {
             val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
             
+            // 计算扫描区域
+            val imageWidth = mediaImage.width
+            val imageHeight = mediaImage.height
+            val scanAreaSize = (imageWidth.coerceAtMost(imageHeight) * 0.7f).toInt()
+            val centerX = imageWidth / 2
+            val centerY = imageHeight / 2
+            
+            val scanArea = android.graphics.Rect(
+                centerX - scanAreaSize/2,
+                centerY - scanAreaSize/2,
+                centerX + scanAreaSize/2,
+                centerY + scanAreaSize/2
+            )
+            
             val scanner = BarcodeScanning.getClient(
                 BarcodeScannerOptions.Builder()
                     .setBarcodeFormats(
@@ -117,12 +131,16 @@ class ScanViewModel @Inject constructor(
 
             scanner.process(image)
                 .addOnSuccessListener { barcodes ->
-                    if (isScanning) {  // 只在isScanning为true时处理扫描结果
+                    if (isScanning) {
                         for (barcode in barcodes) {
-                            barcode.rawValue?.let { content ->
-                                handleScanResult(content, barcode.format)
-                                isScanning = false  // 扫描成功后暂停扫描
-                                return@addOnSuccessListener
+                            // 检查二维码是否在扫描区域内
+                            val boundingBox = barcode.boundingBox
+                            if (boundingBox != null && scanArea.contains(boundingBox)) {
+                                barcode.rawValue?.let { content ->
+                                    handleScanResult(content, barcode.format)
+                                    isScanning = false
+                                    return@addOnSuccessListener
+                                }
                             }
                         }
                     }
@@ -161,8 +179,8 @@ class ScanViewModel @Inject constructor(
                     },
                     timestamp = Date()
                 )
-                scanRecordDao.insertRecord(record)
-                _scanState.value = ScanState.Success(content)
+                repository.insertRecord(record)
+                _scanState.value = ScanState.Success(record)
             } catch (e: Exception) {
                 _scanState.value = ScanState.Error("保存扫描记录失败: ${e.message}")
             }
@@ -177,8 +195,8 @@ class ScanViewModel @Inject constructor(
                     type = type,
                     timestamp = Date()
                 )
-                scanRecordDao.insertRecord(record)
-                _scanState.value = ScanState.Success(content)
+                repository.insertRecord(record)
+                _scanState.value = ScanState.Success(record)
                 isScanning = false  // 手动输入后也暂停扫描
             } catch (e: Exception) {
                 _scanState.value = ScanState.Error("保存手动输入记录失败: ${e.message}")
@@ -195,4 +213,10 @@ class ScanViewModel @Inject constructor(
         super.onCleared()
         cameraExecutor?.shutdown()
     }
+}
+
+sealed class ScanState {
+    object Initial : ScanState()
+    data class Success(val record: ScanRecord) : ScanState()
+    data class Error(val message: String) : ScanState()
 } 

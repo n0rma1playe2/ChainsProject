@@ -1,4 +1,4 @@
-package com.example.web3project.ui.history
+package com.example.web3project.ui.history.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

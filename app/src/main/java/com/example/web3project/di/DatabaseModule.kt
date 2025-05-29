@@ -1,9 +1,14 @@
 package com.example.web3project.di
 
 import android.content.Context
-import androidx.room.Room
-import com.example.web3project.data.local.AppDatabase
-import com.example.web3project.data.local.ScanRecordDao
+import android.content.SharedPreferences
+import com.example.web3project.data.database.AppDatabase
+import com.example.web3project.data.dao.ScanRecordDao
+import com.example.web3project.data.dao.SettingsDao
+import com.example.web3project.data.repository.ScanRecordRepository
+import com.example.web3project.data.repository.ScanRecordRepositoryImpl
+import com.example.web3project.data.repository.SettingsRepository
+import com.example.web3project.data.repository.SettingsRepositoryImpl
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -14,17 +19,10 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
-    
     @Provides
     @Singleton
-    fun provideAppDatabase(
-        @ApplicationContext context: Context
-    ): AppDatabase {
-        return Room.databaseBuilder(
-            context,
-            AppDatabase::class.java,
-            "app_database"
-        ).build()
+    fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
+        return AppDatabase.getDatabase(context)
     }
 
     @Provides
@@ -33,8 +31,25 @@ object DatabaseModule {
     }
 
     @Provides
+    fun provideSettingsDao(database: AppDatabase): SettingsDao {
+        return database.settingsDao()
+    }
+
+    @Provides
     @Singleton
-    fun provideSharedPreferences(@ApplicationContext context: Context): android.content.SharedPreferences {
-        return context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    fun provideScanRecordRepository(scanRecordDao: ScanRecordDao): ScanRecordRepository {
+        return ScanRecordRepositoryImpl(scanRecordDao)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSettingsRepository(settingsDao: SettingsDao): SettingsRepository {
+        return SettingsRepositoryImpl(settingsDao)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSharedPreferences(@ApplicationContext context: Context): SharedPreferences {
+        return context.getSharedPreferences("web3_prefs", Context.MODE_PRIVATE)
     }
 } 

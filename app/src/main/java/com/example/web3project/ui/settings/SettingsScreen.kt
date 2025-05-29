@@ -3,8 +3,12 @@ package com.example.web3project.ui.settings
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.VolumeUp
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -13,12 +17,20 @@ import com.example.web3project.ui.settings.viewmodel.SettingsViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    onBackClick: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
+    val uiState by viewModel.uiState.collectAsState()
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("设置") }
+                title = { Text("设置") },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                }
             )
         }
     ) { padding ->
@@ -48,12 +60,26 @@ fun SettingsScreen(
                     // 自动保存扫描记录
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("自动保存扫描记录")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Outlined.ContentCopy,
+                                contentDescription = "自动保存",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(
+                                text = "自动保存",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
                         Switch(
-                            checked = true,
-                            onCheckedChange = { /* TODO */ }
+                            checked = uiState.autoSave,
+                            onCheckedChange = { viewModel.toggleAutoSave() }
                         )
                     }
                     
@@ -62,12 +88,26 @@ fun SettingsScreen(
                     // 扫描声音
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("扫描声音")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Outlined.VolumeUp,
+                                contentDescription = "扫描声音",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(
+                                text = "扫描声音",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
                         Switch(
-                            checked = true,
-                            onCheckedChange = { /* TODO */ }
+                            checked = uiState.sound,
+                            onCheckedChange = { viewModel.toggleSound() }
                         )
                     }
                     
@@ -76,12 +116,26 @@ fun SettingsScreen(
                     // 扫描震动
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("扫描震动")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Outlined.Notifications,
+                                contentDescription = "扫描震动",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(
+                                text = "扫描震动",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
                         Switch(
-                            checked = true,
-                            onCheckedChange = { /* TODO */ }
+                            checked = uiState.vibration,
+                            onCheckedChange = { viewModel.toggleVibration() }
                         )
                     }
                 }
@@ -96,11 +150,21 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
-                    Text(
-                        text = "关于",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Info,
+                            contentDescription = "关于",
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "关于",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                     Spacer(modifier = Modifier.height(16.dp))
                     Text("版本：1.0.0")
                     Spacer(modifier = Modifier.height(8.dp))

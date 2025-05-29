@@ -1,9 +1,18 @@
 package com.example.web3project.ui.history
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,31 +22,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.web3project.data.local.ScanRecord
+import com.example.web3project.data.entity.ScanRecord
 import java.text.SimpleDateFormat
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecordDetailScreen(
-    record: ScanRecord,
+    recordId: Long,
     onBackClick: () -> Unit,
-    onShareClick: (String) -> Unit,
-    onCopyClick: (String) -> Unit,
-    onDeleteClick: (ScanRecord) -> Unit,
-    onFavoriteClick: (ScanRecord) -> Unit
+    viewModel: HistoryViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
-    val clipboardManager = LocalClipboardManager.current
-    var showCopiedToast by remember { mutableStateOf(false) }
-
-    LaunchedEffect(showCopiedToast) {
-        if (showCopiedToast) {
-            kotlinx.coroutines.delay(2000)
-            showCopiedToast = false
-        }
-    }
+    val record by viewModel.getRecordById(recordId).collectAsState(initial = null)
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
     Scaffold(
         topBar = {
@@ -45,106 +43,63 @@ fun RecordDetailScreen(
                 title = { Text("记录详情") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.Filled.Menu, contentDescription = "返回")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
                 actions = {
-                    IconButton(onClick = { onShareClick(record.content) }) {
-                        Icon(Icons.Filled.Menu, contentDescription = "分享")
-                    }
-                    IconButton(onClick = { onCopyClick(record.content) }) {
-                        Icon(Icons.Filled.Menu, contentDescription = "复制")
-                    }
-                    IconButton(onClick = { onFavoriteClick(record) }) {
-                        Icon(
-                            imageVector = if (record.isFavorite) Icons.Filled.Menu else Icons.Filled.Menu,
-                            contentDescription = if (record.isFavorite) "取消收藏" else "收藏",
-                            tint = if (record.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    IconButton(onClick = { onDeleteClick(record) }) {
-                        Icon(Icons.Filled.Menu, contentDescription = "删除")
+                    record?.let { r ->
+                        IconButton(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("扫描内容", r.content)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Icon(Icons.Filled.ContentCopy, contentDescription = "复制")
+                        }
+                        IconButton(
+                            onClick = { viewModel.toggleFavorite(r) }
+                        ) {
+                            Icon(
+                                if (r.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                                contentDescription = if (r.isFavorite) "取消收藏" else "收藏"
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                viewModel.deleteRecord(r)
+                                onBackClick()
+                            }
+                        ) {
+                            Icon(Icons.Filled.Delete, contentDescription = "删除")
+                        }
                     }
                 }
             )
         }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Card(
-                modifier = Modifier.fillMaxWidth()
+    ) { paddingValues ->
+        record?.let { r ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(16.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = "内容",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = record.content,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                }
+                Text(
+                    text = r.content,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "类型：${r.type}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = "时间：${dateFormat.format(r.timestamp)}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
-
-            Card(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = "类型",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = record.type,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                }
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = "时间",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = dateFormat.format(record.timestamp),
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                }
-            }
-        }
-
-        if (showCopiedToast) {
-            Toast(
-                message = "已复制到剪贴板",
-                modifier = Modifier.padding(16.dp)
-            )
         }
     }
 }

@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.*
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
@@ -12,6 +14,10 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,10 +34,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.web3project.data.local.ScanRecord
+import com.example.web3project.data.entity.ScanRecord
+import com.example.web3project.data.repository.ScanRecordRepository
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
-import java.util.*
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import javax.inject.Inject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +51,7 @@ fun ScanScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
     val scanState by viewModel.scanState.collectAsState()
 
     var hasCameraPermission by remember {
@@ -82,12 +92,14 @@ fun ScanScreen(
         topBar = {
             TopAppBar(
                 title = { Text("扫描") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = "设置")
+                    }
+                },
                 actions = {
                     IconButton(onClick = onNavigateToHistory) {
-                        Icon(Icons.Filled.Menu, contentDescription = "历史记录")
-                    }
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Filled.Menu, contentDescription = "设置")
+                        Icon(Icons.Filled.History, contentDescription = "历史记录")
                     }
                 }
             )
@@ -99,13 +111,11 @@ fun ScanScreen(
                 .padding(paddingValues)
         ) {
             if (hasCameraPermission) {
-                AndroidView(
-                    factory = { ctx ->
-                        PreviewView(ctx).apply {
-                            viewModel.startScanning(this, lifecycleOwner)
-                        }
+                CameraPreview(
+                    onBarcodeDetected = { barcode ->
+                        viewModel.saveManualInput(barcode, "二维码")
                     },
-                    modifier = Modifier.fillMaxSize()
+                    cameraExecutor = cameraExecutor
                 )
 
                 // 扫描区域
@@ -194,12 +204,13 @@ fun ScanScreen(
                             )
                         )
 
+                        // 扫描线
                         Canvas(modifier = Modifier.fillMaxSize()) {
-                            val y = size.height * scanLineY.value
+                            val lineY = size.height * scanLineY.value
                             drawLine(
                                 color = Color.Green,
-                                start = Offset(0f, y),
-                                end = Offset(size.width, y),
+                                start = Offset(0f, lineY),
+                                end = Offset(size.width, lineY),
                                 strokeWidth = 2f
                             )
                         }
@@ -212,7 +223,7 @@ fun ScanScreen(
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = 80.dp) // 增加底部padding，避免被按钮遮挡
+                            .padding(bottom = 80.dp)
                     )
                 }
 
@@ -237,7 +248,7 @@ fun ScanScreen(
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = (scanState as ScanState.Success).content,
+                                    text = (scanState as ScanState.Success).record.content,
                                     style = MaterialTheme.typography.bodyLarge
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
@@ -248,11 +259,11 @@ fun ScanScreen(
                                     Button(
                                         onClick = {
                                             val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                            val clip = android.content.ClipData.newPlainText("扫描内容", (scanState as ScanState.Success).content)
+                                            val clip = android.content.ClipData.newPlainText("扫描内容", (scanState as ScanState.Success).record.content)
                                             clipboard.setPrimaryClip(clip)
                                         }
                                     ) {
-                                        Icon(Icons.Filled.Menu, contentDescription = "复制")
+                                        Icon(Icons.Outlined.ContentCopy, contentDescription = "复制")
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text("复制")
                                     }
@@ -261,19 +272,19 @@ fun ScanScreen(
                                             val shareIntent = android.content.Intent().apply {
                                                 action = android.content.Intent.ACTION_SEND
                                                 type = "text/plain"
-                                                putExtra(android.content.Intent.EXTRA_TEXT, (scanState as ScanState.Success).content)
+                                                putExtra(android.content.Intent.EXTRA_TEXT, (scanState as ScanState.Success).record.content)
                                             }
                                             context.startActivity(android.content.Intent.createChooser(shareIntent, "分享"))
                                         }
                                     ) {
-                                        Icon(Icons.Filled.Menu, contentDescription = "分享")
+                                        Icon(Icons.Filled.Share, contentDescription = "分享")
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text("分享")
                                     }
                                     Button(
                                         onClick = { viewModel.resetScanState() }
                                     ) {
-                                        Icon(Icons.Filled.Menu, contentDescription = "继续扫描")
+                                        Icon(Icons.Outlined.Refresh, contentDescription = "继续扫描")
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text("继续扫描")
                                     }
@@ -301,7 +312,7 @@ fun ScanScreen(
                         .align(Alignment.BottomEnd)
                         .padding(16.dp)
                 ) {
-                    Text("手动输入")
+                    Icon(Icons.Outlined.Edit, contentDescription = "手动输入")
                 }
 
                 if (showDialog) {
@@ -320,7 +331,7 @@ fun ScanScreen(
                         confirmButton = {
                             TextButton(onClick = {
                                 if (input.isNotBlank()) {
-                                    viewModel.saveManualInput(input)
+                                    viewModel.saveManualInput(input, "二维码")
                                     showDialog = false
                                 }
                             }) { Text("保存") }
@@ -338,15 +349,87 @@ fun ScanScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text("需要相机权限才能使用扫描功能")
+                    Text(
+                        text = "需要相机权限才能使用扫描功能",
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.Center
+                    )
                     Spacer(modifier = Modifier.height(16.dp))
-                    Button(
-                        onClick = { launcher.launch(Manifest.permission.CAMERA) }
-                    ) {
+                    Button(onClick = { launcher.launch(Manifest.permission.CAMERA) }) {
                         Text("授予权限")
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun CameraPreview(
+    onBarcodeDetected: (String) -> Unit,
+    cameraExecutor: ExecutorService
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val previewView = remember { PreviewView(context) }
+    val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+
+    LaunchedEffect(previewView) {
+        val cameraProvider = cameraProviderFuture.get()
+        val preview = Preview.Builder().build().also {
+            it.setSurfaceProvider(previewView.surfaceProvider)
+        }
+
+        val imageAnalyzer = ImageAnalysis.Builder()
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+            .also {
+                it.setAnalyzer(cameraExecutor) { imageProxy ->
+                    processImageProxy(imageProxy, onBarcodeDetected)
+                }
+            }
+
+        try {
+            cameraProvider.unbindAll()
+            cameraProvider.bindToLifecycle(
+                lifecycleOwner,
+                CameraSelector.DEFAULT_BACK_CAMERA,
+                preview,
+                imageAnalyzer
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    AndroidView(
+        factory = { previewView },
+        modifier = Modifier.fillMaxSize()
+    )
+}
+
+private fun processImageProxy(
+    imageProxy: ImageProxy,
+    onBarcodeDetected: (String) -> Unit
+) {
+    val image = imageProxy.image
+    if (image != null) {
+        val inputImage = InputImage.fromMediaImage(
+            image,
+            imageProxy.imageInfo.rotationDegrees
+        )
+
+        val scanner = BarcodeScanning.getClient()
+        scanner.process(inputImage)
+            .addOnSuccessListener { barcodes ->
+                barcodes.firstOrNull()?.rawValue?.let { value ->
+                    onBarcodeDetected(value)
+                }
+            }
+            .addOnCompleteListener {
+                imageProxy.close()
+            }
+    } else {
+        imageProxy.close()
     }
 } 

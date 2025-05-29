@@ -7,6 +7,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,90 +20,74 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.web3project.data.local.ScanRecord
+import com.example.web3project.data.entity.ScanRecord
 import java.text.SimpleDateFormat
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
-    onRecordClick: (ScanRecord) -> Unit,
+    onNavigateToRecordDetail: (Long) -> Unit,
+    onNavigateToSettings: () -> Unit,
     viewModel: HistoryViewModel = hiltViewModel()
 ) {
     val records by viewModel.records.collectAsState(initial = emptyList())
-    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
+    var showOnlyFavorites by remember { mutableStateOf(false) }
+    
+    val filteredRecords = remember(records, showOnlyFavorites) {
+        if (showOnlyFavorites) {
+            records.filter { it.isFavorite }
+        } else {
+            records
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("扫描历史") },
+                title = { Text("历史记录") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = "设置")
+                    }
+                },
                 actions = {
-                    if (records.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.deleteAllRecords() }) {
-                            Icon(Icons.Filled.Menu, contentDescription = "清空历史")
-                        }
+                    IconButton(onClick = { showOnlyFavorites = !showOnlyFavorites }) {
+                        Icon(
+                            imageVector = if (showOnlyFavorites) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                            contentDescription = if (showOnlyFavorites) "显示全部" else "只显示收藏"
+                        )
+                    }
+                    IconButton(onClick = { viewModel.deleteAllRecords() }) {
+                        Icon(Icons.Filled.Delete, contentDescription = "删除所有记录")
                     }
                 }
             )
         }
-    ) { padding ->
-        if (records.isEmpty()) {
+    ) { paddingValues ->
+        if (filteredRecords.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center
+                    .padding(paddingValues)
             ) {
-                Text("暂无扫描记录")
+                Text(
+                    text = if (showOnlyFavorites) "暂无收藏记录" else "暂无扫描记录",
+                    modifier = Modifier.padding(16.dp)
+                )
             }
         } else {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
+                    .padding(paddingValues)
             ) {
-                items(records) { record ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        onClick = { onRecordClick(record) }
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = record.content,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                IconButton(
-                                    onClick = { viewModel.toggleFavorite(record) }
-                                ) {
-                                    Icon(
-                                        imageVector = if (record.isFavorite) Icons.Filled.Menu else Icons.Filled.Menu,
-                                        contentDescription = if (record.isFavorite) "取消收藏" else "收藏",
-                                        tint = if (record.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "${record.type} · ${dateFormat.format(record.timestamp)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                items(filteredRecords) { record ->
+                    RecordItem(
+                        record = record,
+                        onItemClick = { onNavigateToRecordDetail(record.id) },
+                        onFavoriteClick = { viewModel.toggleFavorite(record) }
+                    )
                 }
             }
         }

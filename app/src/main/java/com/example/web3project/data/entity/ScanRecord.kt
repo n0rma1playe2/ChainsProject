@@ -1,4 +1,4 @@
-package com.example.web3project.data.local
+package com.example.web3project.data.entity
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
