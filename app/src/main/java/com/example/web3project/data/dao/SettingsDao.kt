@@ -15,14 +15,27 @@ interface SettingsDao {
     @Update
     suspend fun updateSettings(settings: Settings)
 
+    @Query("UPDATE settings SET isDarkTheme = :isDarkTheme WHERE id = 1")
+    suspend fun updateDarkTheme(isDarkTheme: Boolean)
+
+    @Query("UPDATE settings SET isAutoCopyEnabled = :isAutoCopyEnabled WHERE id = 1")
+    suspend fun updateAutoCopy(isAutoCopyEnabled: Boolean)
+
+    @Query("UPDATE settings SET soundEnabled = :soundEnabled WHERE id = 1")
+    suspend fun updateSound(soundEnabled: Boolean)
+
+    @Query("UPDATE settings SET vibrationEnabled = :vibrationEnabled WHERE id = 1")
+    suspend fun updateVibration(vibrationEnabled: Boolean)
+
+    @Query("UPDATE settings SET isEnglish = :isEnglish WHERE id = 1")
+    suspend fun updateLanguage(isEnglish: Boolean)
+
+    @Query("UPDATE settings SET isNotificationEnabled = :isNotificationEnabled WHERE id = 1")
+    suspend fun updateNotification(isNotificationEnabled: Boolean)
+
     @Query("DELETE FROM settings")
     suspend fun deleteAllSettings()
 
-    suspend fun updateSettings(update: (Settings) -> Settings) {
-        getSettings().collect { currentSettings ->
-            currentSettings?.let {
-                updateSettings(update(it))
-            }
-        }
-    }
+    @Query("SELECT COUNT(*) FROM settings WHERE id = 1")
+    suspend fun getSettingsCount(): Int
 } 

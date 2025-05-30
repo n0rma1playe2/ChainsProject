@@ -1,22 +1,29 @@
 package com.example.web3project.data.repository
 
 import com.example.web3project.data.dao.ScanRecordDao
-import com.example.web3project.data.entity.ScanRecord
-import kotlinx.coroutines.flow.Flow
+import com.example.web3project.data.entity.ScanRecordEntity
+import com.example.web3project.data.model.BlockchainTransaction
+import com.example.web3project.data.entity.toScanRecordEntity
 import javax.inject.Inject
+import javax.inject.Singleton
 
+@Singleton
 class ScanRecordRepositoryImpl @Inject constructor(
     private val scanRecordDao: ScanRecordDao
 ) : ScanRecordRepository {
-    override fun getAllRecords(): Flow<List<ScanRecord>> = scanRecordDao.getAllRecords()
+    override suspend fun getAllRecords(): List<BlockchainTransaction> {
+        return scanRecordDao.getAllRecords().map { it.toBlockchainTransaction() }
+    }
 
-    override fun getRecordById(id: Long): Flow<ScanRecord?> = scanRecordDao.getRecordById(id)
+    override suspend fun searchRecords(query: String): List<BlockchainTransaction> {
+        return scanRecordDao.searchRecords(query).map { it.toBlockchainTransaction() }
+    }
 
-    override suspend fun insertRecord(record: ScanRecord) = scanRecordDao.insertRecord(record)
+    override suspend fun getRecordByHash(hash: String): BlockchainTransaction? {
+        return scanRecordDao.getRecordByHash(hash)?.toBlockchainTransaction()
+    }
 
-    override suspend fun updateRecord(record: ScanRecord) = scanRecordDao.updateRecord(record)
-
-    override suspend fun deleteRecord(record: ScanRecord) = scanRecordDao.deleteRecord(record)
-
-    override suspend fun deleteAllRecords() = scanRecordDao.deleteAllRecords()
+    override suspend fun saveRecord(transaction: BlockchainTransaction) {
+        scanRecordDao.insertRecord(transaction.toScanRecordEntity())
+    }
 } 

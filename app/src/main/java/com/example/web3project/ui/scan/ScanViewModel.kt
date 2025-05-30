@@ -1,6 +1,7 @@
 package com.example.web3project.ui.scan
 
 import android.content.Context
+import android.util.Log
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -8,8 +9,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.web3project.data.entity.ScanRecord
-import com.example.web3project.data.repository.ScanRecordRepository
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -19,204 +18,277 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import javax.inject.Inject
+import kotlinx.coroutines.flow.asStateFlow
+import com.example.web3project.data.model.BlockchainTransaction
+import com.example.web3project.data.repository.TraceabilityRepository
+import com.example.web3project.data.repository.TransactionRepository
+import com.example.web3project.data.network.BlockchainNetwork
+import com.example.web3project.data.service.BlockchainVerificationService
 
 @HiltViewModel
 class ScanViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val repository: ScanRecordRepository
+    private val traceabilityRepository: TraceabilityRepository,
+    private val network: BlockchainNetwork,
+    private val transactionRepository: TransactionRepository,
+    private val verificationService: BlockchainVerificationService
 ) : ViewModel() {
 
-    private val _scanState = MutableStateFlow<ScanState>(ScanState.Initial)
-    val scanState: StateFlow<ScanState> = _scanState
+    private val _uiState = MutableStateFlow<ScanUiState>(ScanUiState.Initial)
+    val uiState: StateFlow<ScanUiState> = _uiState.asStateFlow()
 
     private var cameraExecutor: ExecutorService? = null
     private var imageAnalyzer: ImageAnalysis? = null
     private var camera: Camera? = null
-    private var isScanning = true  // 添加扫描状态控制
+    private var cameraProvider: ProcessCameraProvider? = null
+
+    private val _isFlashOn = MutableStateFlow(false)
+    val isFlashOn: StateFlow<Boolean> = _isFlashOn.asStateFlow()
+
+    private val _isScanning = MutableStateFlow(false)
+    val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
+
+    private val _lastScannedTransaction = MutableStateFlow<BlockchainTransaction?>(null)
+    val lastScannedTransaction: StateFlow<BlockchainTransaction?> = _lastScannedTransaction.asStateFlow()
+
+    private var scanner: com.google.mlkit.vision.barcode.BarcodeScanner? = null
+    private var lastScanTime = 0L
+    private val scanInterval = 1000L // 扫描间隔时间（毫秒）
 
     init {
-        cameraExecutor = Executors.newSingleThreadExecutor()
+        try {
+            Log.d("ScanViewModel", "开始初始化扫描器")
+            cameraExecutor = Executors.newSingleThreadExecutor()
+            initializeScanner()
+            Log.d("ScanViewModel", "扫描器初始化完成")
+        } catch (e: Exception) {
+            Log.e("ScanViewModel", "初始化失败", e)
+            _uiState.value = ScanUiState.Error("初始化失败: ${e.message}")
+        }
+    }
+
+    private fun initializeScanner() {
+        try {
+            Log.d("ScanViewModel", "配置 ML Kit 扫描器")
+            val options = BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .build()
+
+            scanner = BarcodeScanning.getClient(options)
+            Log.d("ScanViewModel", "ML Kit 扫描器初始化成功")
+        } catch (e: Exception) {
+            Log.e("ScanViewModel", "ML Kit 扫描器初始化失败", e)
+            _uiState.value = ScanUiState.Error("扫描器初始化失败: ${e.message}")
+        }
     }
 
     fun startScanning(previewView: PreviewView, lifecycleOwner: LifecycleOwner) {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-
-        cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
-
-            val preview = Preview.Builder().build().also {
-                it.setSurfaceProvider(previewView.surfaceProvider)
+        try {
+            Log.d("ScanViewModel", "开始启动相机")
+            if (scanner == null) {
+                Log.d("ScanViewModel", "重新初始化扫描器")
+                initializeScanner()
             }
 
-            imageAnalyzer = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-                .also {
-                    it.setAnalyzer(cameraExecutor!!) { imageProxy ->
-                        if (isScanning) {  // 只在isScanning为true时处理图像
-                            processImageProxy(imageProxy)
-                        } else {
-                            imageProxy.close()
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+            cameraProviderFuture.addListener({
+                try {
+                    Log.d("ScanViewModel", "配置相机预览")
+                    cameraProvider = cameraProviderFuture.get()
+                    
+                    val preview = Preview.Builder()
+                        .setTargetRotation(previewView.display.rotation)
+                        .build()
+                        .also {
+                            it.setSurfaceProvider(previewView.surfaceProvider)
                         }
-                    }
-                }
 
-            try {
-                cameraProvider.unbindAll()
-                camera = cameraProvider.bindToLifecycle(
-                    lifecycleOwner,
-                    CameraSelector.DEFAULT_BACK_CAMERA,
-                    preview,
-                    imageAnalyzer
-                )
-
-                // 设置自动对焦
-                camera?.cameraControl?.enableTorch(false)
-                camera?.cameraControl?.setLinearZoom(0f)
-                camera?.cameraInfo?.torchState?.observe(lifecycleOwner) { torchState ->
-                    if (torchState == TorchState.ON) {
-                        camera?.cameraControl?.enableTorch(false)
-                    }
-                }
-
-            } catch (e: Exception) {
-                _scanState.value = ScanState.Error("相机启动失败: ${e.message}")
-            }
-        }, ContextCompat.getMainExecutor(context))
-    }
-
-    private fun processImageProxy(imageProxy: ImageProxy) {
-        val mediaImage = imageProxy.image
-        if (mediaImage != null) {
-            val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-            
-            // 计算扫描区域
-            val imageWidth = mediaImage.width
-            val imageHeight = mediaImage.height
-            val scanAreaSize = (imageWidth.coerceAtMost(imageHeight) * 0.7f).toInt()
-            val centerX = imageWidth / 2
-            val centerY = imageHeight / 2
-            
-            val scanArea = android.graphics.Rect(
-                centerX - scanAreaSize/2,
-                centerY - scanAreaSize/2,
-                centerX + scanAreaSize/2,
-                centerY + scanAreaSize/2
-            )
-            
-            val scanner = BarcodeScanning.getClient(
-                BarcodeScannerOptions.Builder()
-                    .setBarcodeFormats(
-                        Barcode.FORMAT_QR_CODE,
-                        Barcode.FORMAT_AZTEC,
-                        Barcode.FORMAT_CODABAR,
-                        Barcode.FORMAT_CODE_39,
-                        Barcode.FORMAT_CODE_93,
-                        Barcode.FORMAT_CODE_128,
-                        Barcode.FORMAT_DATA_MATRIX,
-                        Barcode.FORMAT_EAN_8,
-                        Barcode.FORMAT_EAN_13,
-                        Barcode.FORMAT_ITF,
-                        Barcode.FORMAT_UPC_A,
-                        Barcode.FORMAT_UPC_E,
-                        Barcode.FORMAT_PDF417,
-                        Barcode.FORMAT_ALL_FORMATS
-                    )
-                    .build()
-            )
-
-            scanner.process(image)
-                .addOnSuccessListener { barcodes ->
-                    if (isScanning) {
-                        for (barcode in barcodes) {
-                            // 检查二维码是否在扫描区域内
-                            val boundingBox = barcode.boundingBox
-                            if (boundingBox != null && scanArea.contains(boundingBox)) {
-                                barcode.rawValue?.let { content ->
-                                    handleScanResult(content, barcode.format)
-                                    isScanning = false
-                                    return@addOnSuccessListener
+                    imageAnalyzer = ImageAnalysis.Builder()
+                        .setTargetRotation(previewView.display.rotation)
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
+                        .build()
+                        .also {
+                            it.setAnalyzer(cameraExecutor!!) { imageProxy ->
+                                if (_isScanning.value) {
+                                    processImageProxy(imageProxy)
+                                } else {
+                                    imageProxy.close()
                                 }
                             }
                         }
+
+                    Log.d("ScanViewModel", "绑定相机生命周期")
+                    cameraProvider?.unbindAll()
+                    camera = cameraProvider?.bindToLifecycle(
+                        lifecycleOwner,
+                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        preview,
+                        imageAnalyzer
+                    )
+
+                    camera?.cameraControl?.enableTorch(_isFlashOn.value)
+                    Log.d("ScanViewModel", "相机启动成功")
+                } catch (e: Exception) {
+                    Log.e("ScanViewModel", "相机启动失败", e)
+                    _uiState.value = ScanUiState.Error("相机启动失败: ${e.message}")
+                }
+            }, ContextCompat.getMainExecutor(context))
+        } catch (e: Exception) {
+            Log.e("ScanViewModel", "相机初始化失败", e)
+            _uiState.value = ScanUiState.Error("相机初始化失败: ${e.message}")
+        }
+    }
+
+    private fun processImageProxy(imageProxy: ImageProxy) {
+        if (!_isScanning.value || scanner == null) {
+            imageProxy.close()
+            return
+        }
+
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastScanTime < scanInterval) {
+            imageProxy.close()
+            return
+        }
+
+        val image = imageProxy.image
+        if (image == null) {
+            imageProxy.close()
+            return
+        }
+
+        try {
+            Log.d("ScanViewModel", "开始处理图像")
+            val inputImage = InputImage.fromMediaImage(image, imageProxy.imageInfo.rotationDegrees)
+            
+            scanner?.process(inputImage)
+                ?.addOnSuccessListener { barcodes ->
+                    try {
+                        Log.d("ScanViewModel", "扫描到 ${barcodes.size} 个条码")
+                        for (barcode in barcodes) {
+                            val rawValue = barcode.rawValue
+                            if (!rawValue.isNullOrBlank()) {
+                                Log.d("ScanViewModel", "识别到条码: $rawValue")
+                                lastScanTime = currentTime
+                                handleScanResult(rawValue)
+                                break
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("ScanViewModel", "处理扫描结果失败", e)
+                        _uiState.value = ScanUiState.Error("处理扫描结果失败: ${e.message}")
+                    } finally {
+                        imageProxy.close()
                     }
                 }
-                .addOnFailureListener { e ->
-                    _scanState.value = ScanState.Error("扫描失败: ${e.message}")
-                }
-                .addOnCompleteListener {
+                ?.addOnFailureListener { e ->
+                    Log.e("ScanViewModel", "扫描失败", e)
+                    _uiState.value = ScanUiState.Error("扫描失败: ${e.message}")
                     imageProxy.close()
                 }
-        } else {
+        } catch (e: Exception) {
+            Log.e("ScanViewModel", "图像处理失败", e)
+            _uiState.value = ScanUiState.Error("图像处理失败: ${e.message}")
             imageProxy.close()
         }
     }
 
-    private fun handleScanResult(content: String, format: Int) {
+    fun toggleFlash() {
         viewModelScope.launch {
             try {
-                val record = ScanRecord(
-                    content = content,
-                    type = when (format) {
-                        Barcode.FORMAT_QR_CODE -> "QR码"
-                        Barcode.FORMAT_AZTEC -> "Aztec码"
-                        Barcode.FORMAT_CODABAR -> "Codabar码"
-                        Barcode.FORMAT_CODE_39 -> "Code 39码"
-                        Barcode.FORMAT_CODE_93 -> "Code 93码"
-                        Barcode.FORMAT_CODE_128 -> "Code 128码"
-                        Barcode.FORMAT_DATA_MATRIX -> "Data Matrix码"
-                        Barcode.FORMAT_EAN_8 -> "EAN-8码"
-                        Barcode.FORMAT_EAN_13 -> "EAN-13码"
-                        Barcode.FORMAT_ITF -> "ITF码"
-                        Barcode.FORMAT_UPC_A -> "UPC-A码"
-                        Barcode.FORMAT_UPC_E -> "UPC-E码"
-                        Barcode.FORMAT_PDF417 -> "PDF417码"
-                        else -> "未知类型"
-                    },
-                    timestamp = Date()
-                )
-                repository.insertRecord(record)
-                _scanState.value = ScanState.Success(record)
+                _isFlashOn.value = !_isFlashOn.value
+                camera?.cameraControl?.enableTorch(_isFlashOn.value)
             } catch (e: Exception) {
-                _scanState.value = ScanState.Error("保存扫描记录失败: ${e.message}")
+                Log.e("ScanViewModel", "切换闪光灯失败", e)
+                _uiState.value = ScanUiState.Error("切换闪光灯失败: ${e.message}")
             }
         }
     }
 
-    fun saveManualInput(content: String, type: String = "手动输入") {
+    fun handleScanResult(result: String) {
         viewModelScope.launch {
             try {
-                val record = ScanRecord(
-                    content = content,
-                    type = type,
-                    timestamp = Date()
-                )
-                repository.insertRecord(record)
-                _scanState.value = ScanState.Success(record)
-                isScanning = false  // 手动输入后也暂停扫描
+                Log.d("ScanViewModel", "处理扫描结果: $result")
+                _uiState.value = ScanUiState.Loading
+                
+                if (!isValidTransactionHash(result)) {
+                    Log.e("ScanViewModel", "无效的交易哈希: $result")
+                    _uiState.value = ScanUiState.Error("无效的交易哈希")
+                    return@launch
+                }
+                
+                val transaction = verificationService.getTransactionDetails(result)
+                if (transaction != null) {
+                    Log.d("ScanViewModel", "交易详情获取成功")
+                    _lastScannedTransaction.value = transaction
+                    _uiState.value = ScanUiState.Success(transaction)
+                } else {
+                    Log.e("ScanViewModel", "交易未找到")
+                    _uiState.value = ScanUiState.Error("交易未找到")
+                }
             } catch (e: Exception) {
-                _scanState.value = ScanState.Error("保存手动输入记录失败: ${e.message}")
+                Log.e("ScanViewModel", "处理扫描结果失败", e)
+                _uiState.value = ScanUiState.Error("处理扫描结果失败: ${e.message}")
             }
         }
     }
 
-    fun resetScanState() {
-        _scanState.value = ScanState.Initial
-        isScanning = true  // 重置扫描状态，允许继续扫描
+    private fun isValidTransactionHash(hash: String): Boolean {
+        return hash.matches(Regex("^0x[a-fA-F0-9]{64}$"))
+    }
+
+    fun startScan() {
+        viewModelScope.launch {
+            try {
+                Log.d("ScanViewModel", "开始扫描")
+                _isScanning.value = true
+                _uiState.value = ScanUiState.Scanning
+            } catch (e: Exception) {
+                Log.e("ScanViewModel", "启动扫描失败", e)
+                _uiState.value = ScanUiState.Error("启动扫描失败: ${e.message}")
+                _isScanning.value = false
+            }
+        }
+    }
+
+    fun stopScanning() {
+        viewModelScope.launch {
+            try {
+                Log.d("ScanViewModel", "停止扫描")
+                _isScanning.value = false
+                _uiState.value = ScanUiState.Initial
+            } catch (e: Exception) {
+                Log.e("ScanViewModel", "停止扫描失败", e)
+                _uiState.value = ScanUiState.Error("停止扫描失败: ${e.message}")
+            }
+        }
     }
 
     override fun onCleared() {
         super.onCleared()
-        cameraExecutor?.shutdown()
+        try {
+            Log.d("ScanViewModel", "清理资源")
+            cameraProvider?.unbindAll()
+            cameraExecutor?.shutdown()
+            imageAnalyzer = null
+            camera = null
+            cameraProvider = null
+            scanner?.close()
+            scanner = null
+        } catch (e: Exception) {
+            Log.e("ScanViewModel", "清理资源失败", e)
+        }
     }
 }
 
-sealed class ScanState {
-    object Initial : ScanState()
-    data class Success(val record: ScanRecord) : ScanState()
-    data class Error(val message: String) : ScanState()
+sealed class ScanUiState {
+    object Initial : ScanUiState()
+    object Loading : ScanUiState()
+    object Scanning : ScanUiState()
+    data class Success(val transaction: BlockchainTransaction) : ScanUiState()
+    data class Error(val message: String) : ScanUiState()
 } 

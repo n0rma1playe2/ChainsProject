@@ -7,11 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.Favorite
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,26 +16,30 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.web3project.data.entity.ScanRecord
+import com.example.web3project.data.model.BlockchainTransaction
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.foundation.clickable
+import com.example.web3project.ui.components.TopBar
+
+enum class SortOrder {
+    NEWEST_FIRST,
+    OLDEST_FIRST
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
-    onNavigateToRecordDetail: (Long) -> Unit,
+    onNavigateBack: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToDetail: (String) -> Unit,
     viewModel: HistoryViewModel = hiltViewModel()
 ) {
-    val records by viewModel.records.collectAsState(initial = emptyList())
-    var showOnlyFavorites by remember { mutableStateOf(false) }
-    
-    val filteredRecords = remember(records, showOnlyFavorites) {
-        if (showOnlyFavorites) {
-            records.filter { it.isFavorite }
-        } else {
-            records
-        }
+    val uiState by viewModel.uiState.collectAsState()
+    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
+
+    LaunchedEffect(Unit) {
+        viewModel.loadTransactions()
     }
 
     Scaffold(
@@ -47,92 +47,59 @@ fun HistoryScreen(
             TopAppBar(
                 title = { Text("历史记录") },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "设置")
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showOnlyFavorites = !showOnlyFavorites }) {
-                        Icon(
-                            imageVector = if (showOnlyFavorites) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                            contentDescription = if (showOnlyFavorites) "显示全部" else "只显示收藏"
-                        )
-                    }
-                    IconButton(onClick = { viewModel.deleteAllRecords() }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "删除所有记录")
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "设置")
                     }
                 }
             )
         }
     ) { paddingValues ->
-        if (filteredRecords.isEmpty()) {
+        if (uiState.transactions.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
+                    .padding(paddingValues),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = if (showOnlyFavorites) "暂无收藏记录" else "暂无扫描记录",
-                    modifier = Modifier.padding(16.dp)
-                )
+                Text("暂无历史记录")
             }
         } else {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
+                    .padding(16.dp)
             ) {
-                items(filteredRecords) { record ->
-                    RecordItem(
-                        record = record,
-                        onItemClick = { onNavigateToRecordDetail(record.id) },
-                        onFavoriteClick = { viewModel.toggleFavorite(record) }
-                    )
+                items(uiState.transactions) { transaction ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
+                            .clickable { onNavigateToDetail(transaction.hash) },
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        ) {
+                            Text(
+                                text = "交易哈希: ${transaction.hash}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "时间: ${dateFormat.format(Date(transaction.timestamp))}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
                 }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun HistoryItem(
-    record: ScanRecord,
-    isSelected: Boolean,
-    onItemClick: () -> Unit,
-    onItemLongClick: () -> Unit
-) {
-    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-    
-    Card(
-        onClick = onItemClick,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = record.content,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "${record.type} · ${dateFormat.format(record.timestamp)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            if (isSelected) {
-                Icon(
-                    Icons.Filled.Menu,
-                    contentDescription = "已选中",
-                    tint = MaterialTheme.colorScheme.primary
-                )
             }
         }
     }

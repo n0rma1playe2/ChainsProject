@@ -22,83 +22,139 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.web3project.data.entity.ScanRecord
+import com.example.web3project.data.model.BlockchainTransaction
 import java.text.SimpleDateFormat
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecordDetailScreen(
-    recordId: Long,
-    onBackClick: () -> Unit,
+    hash: String,
+    onNavigateBack: () -> Unit,
     viewModel: HistoryViewModel = hiltViewModel()
 ) {
-    val context = LocalContext.current
-    val record by viewModel.getRecordById(recordId).collectAsState(initial = null)
-    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+    val uiState by viewModel.uiState.collectAsState()
+    val transaction = uiState.transactions.find { it.hash == hash }
+    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
+
+    LaunchedEffect(hash) {
+        viewModel.loadTransactions()
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("记录详情") },
+                title = { Text("交易详情") },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                actions = {
-                    record?.let { r ->
-                        IconButton(
-                            onClick = {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clip = ClipData.newPlainText("扫描内容", r.content)
-                                clipboard.setPrimaryClip(clip)
-                                Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
-                            }
-                        ) {
-                            Icon(Icons.Filled.ContentCopy, contentDescription = "复制")
-                        }
-                        IconButton(
-                            onClick = { viewModel.toggleFavorite(r) }
-                        ) {
-                            Icon(
-                                if (r.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                                contentDescription = if (r.isFavorite) "取消收藏" else "收藏"
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                viewModel.deleteRecord(r)
-                                onBackClick()
-                            }
-                        ) {
-                            Icon(Icons.Filled.Delete, contentDescription = "删除")
-                        }
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
                     }
                 }
             )
         }
     ) { paddingValues ->
-        record?.let { r ->
+        if (transaction != null) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
                     .padding(16.dp)
             ) {
-                Text(
-                    text = r.content,
-                    style = MaterialTheme.typography.bodyLarge
-                )
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = "交易哈希",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = transaction.hash,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "区块号",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = transaction.blockNumber.toString(),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "发送方",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = transaction.from,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "接收方",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = transaction.to,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "金额",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = transaction.value.toString(),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "时间",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = dateFormat.format(Date(transaction.timestamp)),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "输入数据",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = transaction.input,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "类型：${r.type}",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = "时间：${dateFormat.format(r.timestamp)}",
-                    style = MaterialTheme.typography.bodyMedium
-                )
+
+                Button(
+                    onClick = { /* TODO: 验证交易 */ },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("验证交易")
+                }
+            }
+        } else {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
             }
         }
     }

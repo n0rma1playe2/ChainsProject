@@ -2,37 +2,46 @@ package com.example.web3project.ui.history.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.web3project.data.entity.ScanRecord
-import com.example.web3project.data.repository.ScanRecordRepository
+import com.example.web3project.data.model.BlockchainTransaction
+import com.example.web3project.data.repository.TransactionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class HistoryViewModel @Inject constructor(
-    private val repository: ScanRecordRepository
+    private val repository: TransactionRepository
 ) : ViewModel() {
 
-    val records: Flow<List<ScanRecord>> = repository.getAllRecords()
+    private val _transactions = MutableStateFlow<List<BlockchainTransaction>>(emptyList())
+    val transactions: StateFlow<List<BlockchainTransaction>> = _transactions.asStateFlow()
 
-    fun getRecordById(id: Long): Flow<ScanRecord?> = repository.getRecordById(id)
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    fun toggleFavorite(record: ScanRecord) {
+    init {
+        loadTransactions()
+    }
+
+    private fun loadTransactions() {
         viewModelScope.launch {
-            repository.updateRecord(record.copy(isFavorite = !record.isFavorite))
+            _isLoading.value = true
+            try {
+                repository.getAllTransactions().collect { result ->
+                    _transactions.value = result
+                }
+            } catch (e: Exception) {
+                // 处理错误
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
 
-    fun deleteRecord(record: ScanRecord) {
-        viewModelScope.launch {
-            repository.deleteRecord(record)
-        }
-    }
-
-    fun deleteAllRecords() {
-        viewModelScope.launch {
-            repository.deleteAllRecords()
-        }
+    fun refreshTransactions() {
+        loadTransactions()
     }
 } 

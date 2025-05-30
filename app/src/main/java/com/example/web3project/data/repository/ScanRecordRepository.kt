@@ -1,13 +1,10 @@
 package com.example.web3project.data.repository
 
-import com.example.web3project.data.entity.ScanRecord
-import kotlinx.coroutines.flow.Flow
+import com.example.web3project.data.model.BlockchainTransaction
 
 interface ScanRecordRepository {
-    fun getAllRecords(): Flow<List<ScanRecord>>
-    fun getRecordById(id: Long): Flow<ScanRecord?>
-    suspend fun insertRecord(record: ScanRecord)
-    suspend fun updateRecord(record: ScanRecord)
-    suspend fun deleteRecord(record: ScanRecord)
-    suspend fun deleteAllRecords()
+    suspend fun getAllRecords(): List<BlockchainTransaction>
+    suspend fun searchRecords(query: String): List<BlockchainTransaction>
+    suspend fun getRecordByHash(hash: String): BlockchainTransaction?
+    suspend fun saveRecord(transaction: BlockchainTransaction)
 } 

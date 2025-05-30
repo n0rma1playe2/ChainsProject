@@ -2,9 +2,12 @@ package com.example.web3project.ui.scan
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.*
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.core.*
@@ -23,6 +26,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -34,26 +38,41 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.web3project.data.entity.ScanRecord
-import com.example.web3project.data.repository.ScanRecordRepository
 import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import javax.inject.Inject
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.rememberPermissionState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.example.web3project.ui.components.CameraPreview
+import com.example.web3project.ui.components.ScanOverlay
+import com.example.web3project.data.model.BlockchainTransaction
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Camera
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalPermissionsApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ScanScreen(
     onNavigateToHistory: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToTraceability: () -> Unit,
     viewModel: ScanViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
-    val scanState by viewModel.scanState.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
+    val isFlashOn by viewModel.isFlashOn.collectAsState()
+    val isScanning by viewModel.isScanning.collectAsState()
+    val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
+    var showManualInput by remember { mutableStateOf(false) }
+    var manualInputText by remember { mutableStateOf("") }
+    val lastScannedTransaction by viewModel.lastScannedTransaction.collectAsState()
 
+    var previewView by remember { mutableStateOf<PreviewView?>(null) }
     var hasCameraPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -67,19 +86,36 @@ fun ScanScreen(
         contract = ActivityResultContracts.RequestPermission(),
         onResult = { granted ->
             hasCameraPermission = granted
+            if (granted) {
+                previewView?.let { view ->
+                    viewModel.startScanning(view, lifecycleOwner)
+                }
+            }
         }
     )
 
     LaunchedEffect(Unit) {
-        if (!hasCameraPermission) {
-            launcher.launch(Manifest.permission.CAMERA)
+        if (hasCameraPermission) {
+            previewView?.let { view ->
+                viewModel.startScanning(view, lifecycleOwner)
+            }
         }
     }
 
     DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_DESTROY) {
-                viewModel.resetScanState()
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> {
+                    if (hasCameraPermission) {
+                        previewView?.let { view ->
+                            viewModel.startScanning(view, lifecycleOwner)
+                        }
+                    }
+                }
+                Lifecycle.Event.ON_STOP -> {
+                    viewModel.stopScanning()
+                }
+                else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -88,348 +124,355 @@ fun ScanScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (hasCameraPermission) {
+            AndroidView(
+                factory = { ctx ->
+                    PreviewView(ctx).also {
+                        previewView = it
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+
+            ScanFrame(
+                modifier = Modifier.fillMaxSize(),
+                isScanning = isScanning
+            )
+
+            // 顶部工具栏
             TopAppBar(
-                title = { Text("扫描") },
+                title = { Text("扫描交易") },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "设置")
+                    IconButton(onClick = onNavigateToHistory) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
                 actions = {
-                    IconButton(onClick = onNavigateToHistory) {
-                        Icon(Icons.Filled.History, contentDescription = "历史记录")
+                    IconButton(onClick = { showManualInput = true }) {
+                        Icon(Icons.Filled.Edit, contentDescription = "手动输入")
                     }
-                }
-            )
-        }
-    ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            if (hasCameraPermission) {
-                CameraPreview(
-                    onBarcodeDetected = { barcode ->
-                        viewModel.saveManualInput(barcode, "二维码")
-                    },
-                    cameraExecutor = cameraExecutor
-                )
-
-                // 扫描区域
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.5f))
-                ) {
-                    // 扫描框
-                    val scanAreaSize = 250.dp
-                    Box(
-                        modifier = Modifier
-                            .size(scanAreaSize)
-                            .align(Alignment.Center)
-                    ) {
-                        // 扫描框边框
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val strokeWidth = 2f
-                            val cornerLength = size.width * 0.2f
-                            
-                            // 左上角
-                            drawLine(
-                                color = Color.White,
-                                start = Offset(0f, cornerLength),
-                                end = Offset(0f, 0f),
-                                strokeWidth = strokeWidth
-                            )
-                            drawLine(
-                                color = Color.White,
-                                start = Offset(0f, 0f),
-                                end = Offset(cornerLength, 0f),
-                                strokeWidth = strokeWidth
-                            )
-                            
-                            // 右上角
-                            drawLine(
-                                color = Color.White,
-                                start = Offset(size.width - cornerLength, 0f),
-                                end = Offset(size.width, 0f),
-                                strokeWidth = strokeWidth
-                            )
-                            drawLine(
-                                color = Color.White,
-                                start = Offset(size.width, 0f),
-                                end = Offset(size.width, cornerLength),
-                                strokeWidth = strokeWidth
-                            )
-                            
-                            // 左下角
-                            drawLine(
-                                color = Color.White,
-                                start = Offset(0f, size.height - cornerLength),
-                                end = Offset(0f, size.height),
-                                strokeWidth = strokeWidth
-                            )
-                            drawLine(
-                                color = Color.White,
-                                start = Offset(0f, size.height),
-                                end = Offset(cornerLength, size.height),
-                                strokeWidth = strokeWidth
-                            )
-                            
-                            // 右下角
-                            drawLine(
-                                color = Color.White,
-                                start = Offset(size.width - cornerLength, size.height),
-                                end = Offset(size.width, size.height),
-                                strokeWidth = strokeWidth
-                            )
-                            drawLine(
-                                color = Color.White,
-                                start = Offset(size.width, size.height - cornerLength),
-                                end = Offset(size.width, size.height),
-                                strokeWidth = strokeWidth
-                            )
-                        }
-
-                        // 扫描线动画
-                        val infiniteTransition = rememberInfiniteTransition()
-                        val scanLineY = infiniteTransition.animateFloat(
-                            initialValue = 0f,
-                            targetValue = 1f,
-                            animationSpec = infiniteRepeatable(
-                                animation = tween(2000, easing = LinearEasing),
-                                repeatMode = RepeatMode.Reverse
-                            )
+                    IconButton(onClick = { viewModel.toggleFlash() }) {
+                        Icon(
+                            imageVector = if (isFlashOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
+                            contentDescription = "闪光灯"
                         )
-
-                        // 扫描线
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val lineY = size.height * scanLineY.value
-                            drawLine(
-                                color = Color.Green,
-                                start = Offset(0f, lineY),
-                                end = Offset(size.width, lineY),
-                                strokeWidth = 2f
-                            )
-                        }
                     }
+                },
+                modifier = Modifier.background(Color.Black.copy(alpha = 0.5f))
+            )
 
-                    // 提示文本
+            // 底部控制区域
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .padding(16.dp)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Text(
-                        text = "将二维码/条形码放入框内，即可自动扫描",
+                        text = "将二维码放入框内，即可自动扫描",
                         color = Color.White,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 80.dp)
-                    )
-                }
-
-                // 扫描结果
-                when (scanState) {
-                    is ScanState.Success -> {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
-                                .align(Alignment.BottomCenter)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp)
-                            ) {
-                                Text(
-                                    text = "扫描结果",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = (scanState as ScanState.Success).record.content,
-                                    style = MaterialTheme.typography.bodyLarge
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
-                                ) {
-                                    Button(
-                                        onClick = {
-                                            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                            val clip = android.content.ClipData.newPlainText("扫描内容", (scanState as ScanState.Success).record.content)
-                                            clipboard.setPrimaryClip(clip)
-                                        }
-                                    ) {
-                                        Icon(Icons.Outlined.ContentCopy, contentDescription = "复制")
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("复制")
-                                    }
-                                    Button(
-                                        onClick = {
-                                            val shareIntent = android.content.Intent().apply {
-                                                action = android.content.Intent.ACTION_SEND
-                                                type = "text/plain"
-                                                putExtra(android.content.Intent.EXTRA_TEXT, (scanState as ScanState.Success).record.content)
-                                            }
-                                            context.startActivity(android.content.Intent.createChooser(shareIntent, "分享"))
-                                        }
-                                    ) {
-                                        Icon(Icons.Filled.Share, contentDescription = "分享")
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("分享")
-                                    }
-                                    Button(
-                                        onClick = { viewModel.resetScanState() }
-                                    ) {
-                                        Icon(Icons.Outlined.Refresh, contentDescription = "继续扫描")
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("继续扫描")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    is ScanState.Error -> {
-                        Text(
-                            text = (scanState as ScanState.Error).message,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier
-                                .padding(16.dp)
-                                .align(Alignment.BottomCenter)
-                        )
-                    }
-                    else -> {}
-                }
-
-                // 手动输入按钮
-                var showDialog by remember { mutableStateOf(false) }
-                FloatingActionButton(
-                    onClick = { showDialog = true },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(16.dp)
-                ) {
-                    Icon(Icons.Outlined.Edit, contentDescription = "手动输入")
-                }
-
-                if (showDialog) {
-                    var input by remember { mutableStateOf("") }
-                    AlertDialog(
-                        onDismissRequest = { showDialog = false },
-                        title = { Text("手动输入内容") },
-                        text = {
-                            OutlinedTextField(
-                                value = input,
-                                onValueChange = { input = it },
-                                label = { Text("请输入内容") },
-                                singleLine = true
-                            )
-                        },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                if (input.isNotBlank()) {
-                                    viewModel.saveManualInput(input, "二维码")
-                                    showDialog = false
-                                }
-                            }) { Text("保存") }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showDialog = false }) { Text("取消") }
-                        }
-                    )
-                }
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = "需要相机权限才能使用扫描功能",
-                        style = MaterialTheme.typography.bodyLarge,
-                        textAlign = TextAlign.Center
+                        modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = { launcher.launch(Manifest.permission.CAMERA) }) {
-                        Text("授予权限")
+                    Button(
+                        onClick = {
+                            if (isScanning) {
+                                viewModel.stopScanning()
+                            } else {
+                                viewModel.startScan()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isScanning) Color.Red else Color.Green
+                        )
+                    ) {
+                        Text(
+                            text = if (isScanning) "停止扫描" else "开始扫描",
+                            color = Color.White
+                        )
                     }
                 }
             }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text("需要相机权限才能使用扫描功能")
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(onClick = { launcher.launch(Manifest.permission.CAMERA) }) {
+                    Text("授予权限")
+                }
+            }
+        }
+
+        when (uiState) {
+            is ScanUiState.Initial -> {
+                // 初始状态，显示扫描按钮
+            }
+            is ScanUiState.Loading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+            is ScanUiState.Scanning -> {
+                // 扫描中状态，显示扫描动画
+            }
+            is ScanUiState.Success -> {
+                val transaction = (uiState as ScanUiState.Success).transaction
+                TransactionResultDialog(
+                    transaction = transaction,
+                    onDismiss = { viewModel.stopScanning() }
+                )
+            }
+            is ScanUiState.Error -> {
+                val message = (uiState as ScanUiState.Error).message
+                ErrorDialog(
+                    message = message,
+                    onDismiss = { viewModel.stopScanning() }
+                )
+            }
+        }
+
+        if (showManualInput) {
+            ManualInputDialog(
+                text = manualInputText,
+                onTextChange = { manualInputText = it },
+                onDismiss = { showManualInput = false },
+                onConfirm = {
+                    showManualInput = false
+                }
+            )
         }
     }
 }
 
 @Composable
-fun CameraPreview(
-    onBarcodeDetected: (String) -> Unit,
-    cameraExecutor: ExecutorService
+fun ScanFrame(
+    modifier: Modifier = Modifier,
+    isScanning: Boolean
 ) {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val previewView = remember { PreviewView(context) }
-    val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+    val infiniteTransition = rememberInfiniteTransition(label = "scan")
+    val scanLineY = infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "scanLine"
+    )
 
-    LaunchedEffect(previewView) {
-        val cameraProvider = cameraProviderFuture.get()
-        val preview = Preview.Builder().build().also {
-            it.setSurfaceProvider(previewView.surfaceProvider)
+    val scale = infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "scale"
+    )
+
+    Box(modifier = modifier) {
+        // 半透明遮罩
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val width = size.width
+            val height = size.height
+            val scanSize = width * 0.6f
+            val scanX = (width - scanSize) / 2
+            val scanY = (height - scanSize) / 2
+
+            // 绘制半透明背景
+            drawRect(
+                color = Color.Black.copy(alpha = 0.5f),
+                topLeft = Offset(0f, 0f),
+                size = size
+            )
+
+            // 清除扫描区域
+            drawRect(
+                color = Color.Transparent,
+                topLeft = Offset(scanX, scanY),
+                size = androidx.compose.ui.geometry.Size(scanSize, scanSize)
+            )
+
+            // 绘制扫描框
+            drawRect(
+                color = Color.White,
+                topLeft = Offset(scanX, scanY),
+                size = androidx.compose.ui.geometry.Size(scanSize, scanSize),
+                style = Stroke(width = 2f)
+            )
+
+            // 绘制四个角
+            val cornerLength = scanSize * 0.1f
+            val cornerWidth = 4f
+
+            // 左上角
+            drawLine(
+                color = Color.Green,
+                start = Offset(scanX, scanY + cornerLength),
+                end = Offset(scanX, scanY),
+                strokeWidth = cornerWidth
+            )
+            drawLine(
+                color = Color.Green,
+                start = Offset(scanX, scanY),
+                end = Offset(scanX + cornerLength, scanY),
+                strokeWidth = cornerWidth
+            )
+
+            // 右上角
+            drawLine(
+                color = Color.Green,
+                start = Offset(scanX + scanSize - cornerLength, scanY),
+                end = Offset(scanX + scanSize, scanY),
+                strokeWidth = cornerWidth
+            )
+            drawLine(
+                color = Color.Green,
+                start = Offset(scanX + scanSize, scanY),
+                end = Offset(scanX + scanSize, scanY + cornerLength),
+                strokeWidth = cornerWidth
+            )
+
+            // 左下角
+            drawLine(
+                color = Color.Green,
+                start = Offset(scanX, scanY + scanSize - cornerLength),
+                end = Offset(scanX, scanY + scanSize),
+                strokeWidth = cornerWidth
+            )
+            drawLine(
+                color = Color.Green,
+                start = Offset(scanX, scanY + scanSize),
+                end = Offset(scanX + cornerLength, scanY + scanSize),
+                strokeWidth = cornerWidth
+            )
+
+            // 右下角
+            drawLine(
+                color = Color.Green,
+                start = Offset(scanX + scanSize - cornerLength, scanY + scanSize),
+                end = Offset(scanX + scanSize, scanY + scanSize),
+                strokeWidth = cornerWidth
+            )
+            drawLine(
+                color = Color.Green,
+                start = Offset(scanX + scanSize, scanY + scanSize),
+                end = Offset(scanX + scanSize, scanY + scanSize - cornerLength),
+                strokeWidth = cornerWidth
+            )
+
+            // 绘制扫描线
+            if (isScanning) {
+                val lineY = scanY + scanSize * scanLineY.value
+                drawLine(
+                    color = Color.Green,
+                    start = Offset(scanX, lineY),
+                    end = Offset(scanX + scanSize, lineY),
+                    strokeWidth = 2f
+                )
+            }
         }
 
-        val imageAnalyzer = ImageAnalysis.Builder()
-            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .build()
-            .also {
-                it.setAnalyzer(cameraExecutor) { imageProxy ->
-                    processImageProxy(imageProxy, onBarcodeDetected)
-                }
-            }
-
-        try {
-            cameraProvider.unbindAll()
-            cameraProvider.bindToLifecycle(
-                lifecycleOwner,
-                CameraSelector.DEFAULT_BACK_CAMERA,
-                preview,
-                imageAnalyzer
+        // 底部提示文本
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 32.dp),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Text(
+                text = if (isScanning) "正在扫描..." else "将二维码放入框内",
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White
             )
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
+}
 
-    AndroidView(
-        factory = { previewView },
-        modifier = Modifier.fillMaxSize()
+@Composable
+private fun TransactionResultDialog(
+    transaction: BlockchainTransaction,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("扫描成功") },
+        text = {
+            Column {
+                Text("交易哈希: ${transaction.hash}")
+                Text("时间戳: ${transaction.timestamp}")
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("确定")
+            }
+        }
     )
 }
 
-private fun processImageProxy(
-    imageProxy: ImageProxy,
-    onBarcodeDetected: (String) -> Unit
+@Composable
+private fun ErrorDialog(
+    message: String,
+    onDismiss: () -> Unit
 ) {
-    val image = imageProxy.image
-    if (image != null) {
-        val inputImage = InputImage.fromMediaImage(
-            image,
-            imageProxy.imageInfo.rotationDegrees
-        )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("扫描失败") },
+        text = { Text(message) },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("确定")
+            }
+        }
+    )
+}
 
-        val scanner = BarcodeScanning.getClient()
-        scanner.process(inputImage)
-            .addOnSuccessListener { barcodes ->
-                barcodes.firstOrNull()?.rawValue?.let { value ->
-                    onBarcodeDetected(value)
-                }
+@Composable
+private fun ManualInputDialog(
+    text: String,
+    onTextChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("手动输入") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = onTextChange,
+                label = { Text("输入交易哈希") },
+                singleLine = true
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("确定")
             }
-            .addOnCompleteListener {
-                imageProxy.close()
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
             }
-    } else {
-        imageProxy.close()
-    }
+        }
+    )
 } 

@@ -8,10 +8,9 @@ data class Settings(
     @PrimaryKey
     val id: Int = 1,
     val isDarkTheme: Boolean = false,
-    val vibrationEnabled: Boolean = true,
+    val isAutoCopyEnabled: Boolean = false,
     val soundEnabled: Boolean = true,
-    val autoSaveEnabled: Boolean = true,
+    val vibrationEnabled: Boolean = true,
     val isEnglish: Boolean = false,
-    val isNotificationEnabled: Boolean = true,
-    val isAutoCopyEnabled: Boolean = false
+    val isNotificationEnabled: Boolean = true
 ) 

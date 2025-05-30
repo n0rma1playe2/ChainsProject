@@ -1,76 +1,62 @@
 package com.example.web3project.ui.settings
 
-import android.content.SharedPreferences
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.web3project.data.repository.ScanRecordRepository
+import com.example.web3project.data.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val scanRecordRepository: ScanRecordRepository,
-    private val sharedPreferences: SharedPreferences
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
-    private val _isDarkTheme = MutableStateFlow(sharedPreferences.getBoolean("isDarkTheme", false))
-    val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
 
-    var autoCopy by mutableStateOf(sharedPreferences.getBoolean("autoCopy", false))
-        private set
-
-    var soundEnabled by mutableStateOf(sharedPreferences.getBoolean("soundEnabled", true))
-        private set
-
-    private val _currentLanguage = MutableStateFlow(sharedPreferences.getString("currentLanguage", "中文") ?: "中文")
-    val currentLanguage: StateFlow<String> = _currentLanguage.asStateFlow()
-
-    private val _notificationsEnabled = MutableStateFlow(true)
-    val notificationsEnabled: StateFlow<Boolean> = _notificationsEnabled.asStateFlow()
+    val settings: StateFlow<com.example.web3project.data.entity.Settings> =
+        settingsRepository.getSettings()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, com.example.web3project.data.entity.Settings())
 
     fun toggleTheme() {
-        _isDarkTheme.value = !_isDarkTheme.value
-        saveSettings()
-    }
-
-    fun toggleNotifications() {
-        _notificationsEnabled.value = !_notificationsEnabled.value
+        viewModelScope.launch {
+            settingsRepository.updateSettings { it.copy(isDarkTheme = !it.isDarkTheme) }
+        }
     }
 
     fun toggleAutoCopy() {
-        autoCopy = !autoCopy
-        saveSettings()
+        viewModelScope.launch {
+            settingsRepository.updateSettings { it.copy(isAutoCopyEnabled = !it.isAutoCopyEnabled) }
+        }
     }
 
     fun toggleSound() {
-        soundEnabled = !soundEnabled
-        saveSettings()
-    }
-
-    fun switchLanguage(language: String) {
-        _currentLanguage.value = language
-        saveSettings()
-    }
-
-    fun clearHistory() {
         viewModelScope.launch {
-            scanRecordRepository.deleteAllRecords()
+            settingsRepository.updateSettings { it.copy(soundEnabled = !it.soundEnabled) }
         }
     }
 
-    private fun saveSettings() {
-        sharedPreferences.edit().apply {
-            putBoolean("isDarkTheme", _isDarkTheme.value)
-            putBoolean("autoCopy", autoCopy)
-            putBoolean("soundEnabled", soundEnabled)
-            putString("currentLanguage", currentLanguage.value)
-            apply()
+    fun toggleVibration() {
+        viewModelScope.launch {
+            settingsRepository.updateSettings { it.copy(vibrationEnabled = !it.vibrationEnabled) }
         }
     }
+
+    fun toggleLanguage() {
+        viewModelScope.launch {
+            settingsRepository.updateSettings { it.copy(isEnglish = !it.isEnglish) }
+        }
+    }
+
+    fun toggleNotification() {
+        viewModelScope.launch {
+            settingsRepository.updateSettings { it.copy(isNotificationEnabled = !it.isNotificationEnabled) }
+        }
+    }
+}
+
+sealed class SettingsUiState {
+    object Initial : SettingsUiState()
+    object Loading : SettingsUiState()
+    object Success : SettingsUiState()
+    data class Error(val message: String) : SettingsUiState()
 } 
